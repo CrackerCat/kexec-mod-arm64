@@ -58,6 +58,26 @@ void migrate_to_reboot_cpu(void)
 	migrate_to_reboot_cpu_ptr();
 }
 
+
+int __boot_cpu_mode[2];
+
+static void __init_cpu_boot_mode(void)
+{
+	/*
+	 * Hack to obtain pointer to __boot_mode_cpu
+	 * Our approach is to decode the address to __boot_mode_cpu from the instructions
+	 * of set_cpu_boot_mode_flag which is exported and references __boot_mode_cpu.
+	 */
+	u32 *set_cpu_boot_mode_flag_ptr = (void *)kallsyms_lookup_name("set_cpu_boot_mode_flag");
+	int *boot_cpu_mode_ptr = (void *) (((unsigned long) set_cpu_boot_mode_flag_ptr) & ~0xFFF);
+	u16 lo = (*set_cpu_boot_mode_flag_ptr >> 29) & 0x3;
+	u16 hi = (*set_cpu_boot_mode_flag_ptr >> 4) & 0xFFFF;
+	boot_cpu_mode_ptr += ((hi << 13) | (lo << 12));
+
+	__boot_cpu_mode[0] = boot_cpu_mode_ptr[0];
+	__boot_cpu_mode[1] = boot_cpu_mode_ptr[1];
+}
+
 static void *ksym(const char *name)
 {
 	return (void *) kallsyms_lookup_name(name);
@@ -74,5 +94,6 @@ int kexec_compat_load(void)
 	    || !(migrate_to_reboot_cpu_ptr = ksym("migrate_to_reboot_cpu"))
 	    || !(kernel_restart_prepare_ptr = ksym("kernel_restart_prepare")))
 		return -ENOENT;
+	__init_cpu_boot_mode();
 	return 0;
 }
